@@ -1,0 +1,12 @@
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"/><title>Unknown </title></head><body>
+<h1 id="total_invoice_managment">total_invoice_managment</h1>
+<h2 id="a-kubernetes-tutorial">a kubernetes tutorial</h2>
+<p>This repo accompanies a <a href="https://medium.com/@MostlyHarmlessD/getting-started-with-microservices-and-kubernetes-76354312b556">blog post</a>.</p>
+<h2 id="runing-the-cluster">Runing the cluster</h2>
+<p>First build all of the custom docker containers:</p>
+<p><code>$ docker build -t invoices_svc:v2 ./invoices_svc
+$ docker build -t auth_svc:v1 ./auth_svc
+$ docker build -t expected_date_svc:v1 ./expected_date</code></p>
+<p>Then apply all the cluster config:</p>
+<p><code>$ kubectl apply -f ./kube</code></p>
+</body></html>
