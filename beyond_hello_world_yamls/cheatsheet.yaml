@@ -1,0 +1,9 @@
+kubectl create -f webapp-pod.yaml
+kubectl get pods
+kubectl port-forward webapp 9009
+curl -s http://localhost:9009/store
+curl -X PUT \
+-d '{"Key": "key1", "Value": "some value"}' http://localhost:9009/store
+curl -s http://localhost:9009/store
+kubectl get services
+curl <service ip:port>/store

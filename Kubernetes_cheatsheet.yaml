@@ -15,9 +15,11 @@ BASICS:
 yum install bash-completion -y && \
 echo "source <(kubectl completion bash)" >> ~/.bashrc \
 echo "k = kubectl" >> ~/.bashrc
+pip install kube-shell
+brew install kubectx kubens #switch contexts and namespaces
 gcloud container clusters create test-cluster / minikube start
 gcloud container clusters get-credentials test-cluster
-kubectl config use-context <cluster-name> #for exam
+kubectl config get-contexts/use-context <cluster-name> #for exam
 tmux new -s s1
 tmux attach -t s1 #Ctrl-b % vert / Ctrl-b " horiz split
 tmux ls
@@ -37,6 +39,25 @@ kubectl create/get/describe/top/delete <kind> <resource-yaml-demo> \
 kubectl get pod <pod_name> --watch //watch for changes from other term
 kubectl exec -it <pod_name> -- /bin/bash
 kubectl proxy
+#create deployment yaml template
+kubectl create deployment -o yaml --dry-run d1.yaml --image=[mysql:5.6]
+kubectl create job j1 -o yaml --dry-run --image=[mysql:5.6]
+
+apiVersions:
+ComponentStatus, Secret, Service, ServiceAccount, Event	      v1
+Pod, Node, Endpoints, Namespace, ConfigMap	                  v1
+LimitRange, PodTemplate, ReplicationController, ResourceQuota	v1
+PersistentVolume, PersistentVolumeClaim	                      v1
+
+DaemonSet, Deployment, Ingress, NetworkPolicy, ReplicaSet, PodSecurityPolicy	extensions/v1beta1
+Role, RoleBinding, ClusterRole, ClusterRoleBinding	          rbac.authorization.k8s.io/v1
+CertificateSigningRequest	                                    certificates.k8s.io/v1beta1
+
+HorizontalPodAutoscaler	        autoscaling/v1
+ControllerRevision, StatefulSet	apps/v1
+Job	                            batch/v1
+CronJob	                        batch/v1beta1
+PodDisruptionBudget	            policy/v1beta1
 
 SCHEDULING:
 
@@ -110,21 +131,26 @@ RESOURCE LIMITS:
 Application resource requirements:
 https://kubernetes.io/docs/tasks/configure-pod-container/
 
-  kubernetes create -f
-  https://k8s.io/examples/pods/qos/qos-pod.yaml
-                              /resource/extended-resource-pod.yaml
-                              /storage/redis.yaml //volume
-  https://k8s.io/examples/admin/resource/memory-defaults.yaml
-                                        /cpu-defaults.yaml
-                                        /memory-constraints.yaml
-                                        /cpu-constraints.yaml
-                                        /quota-mem-cpu.yaml
-                                        /quota-pod.yaml
-                                        /quota-objects.yaml
-                                        /quota-objects-pvc.yaml
-                                        /memory-request-limit.yaml
-                                        /cpu-request-limit.yaml
-  --namespace=<resource yaml name>
+kubectl run --image=apache --port=80 --replicas=3 --restart='Always' \
+--expose --requests='cpu=100m,memory=256Mi' --limits='cpu=200m,memory=512Mi' \
+--labels=app=apache,version=1 --dry-run=true -o yaml
+#--generator=<> (best practice https://kubernetes.io/docs/reference/kubectl/conventions/)
+
+kubernetes create -f \
+https://k8s.io/examples/pods/qos/qos-pod.yaml
+                            /resource/extended-resource-pod.yaml
+                            /storage/redis.yaml //volume
+https://k8s.io/examples/admin/resource/memory-defaults.yaml
+                                      /cpu-defaults.yaml
+                                      /memory-constraints.yaml
+                                      /cpu-constraints.yaml
+                                      /quota-mem-cpu.yaml
+                                      /quota-pod.yaml
+                                      /quota-objects.yaml
+                                      /quota-objects-pvc.yaml
+                                      /memory-request-limit.yaml
+                                      /cpu-request-limit.yaml
+--namespace=<resource yaml name>
 
 apiVersion: v1
 kind: Pod
@@ -173,11 +199,6 @@ spec:
         periodSeconds: 10
         failureThreshold: 3
 
-kubectl run --image=apache --port=80 --replicas=3 --restart='Always' \
---expose --requests='cpu=100m,memory=256Mi' --limits='cpu=200m,memory=512Mi' \
---labels=app=apache,version=1 --dry-run=true -o yaml
-#--generator=<> (best practice https://kubernetes.io/docs/reference/kubectl/conventions/)
-
 Understand multiple schedulers and know how to configure the Kubernetes scheduler:
 https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
 
@@ -202,6 +223,7 @@ roleRef:
 ---
 apiVersion: apps/v1
 kind: Deployment
+#Create Deployment before Service
 metadata:
   labels:
     component: scheduler
@@ -289,6 +311,7 @@ spec:
     name: server
 kubectl create -f logs/logs.yaml
 kubectl logs logs
+kubectl logs POD_NAME -c CONTAINER_NAME -p #logs from previously terminated container
 
 Manage cluster component logs:
   Master
@@ -407,7 +430,32 @@ spec:
         image: nginx:1.7.9
 
 https://kubernetes.io/docs/reference/access-authn-authz/rbac/
+#This role can be used to grant read access to pods, deployments, jobs, secrets:
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: default
+  name: pod-reader
+rules:
+- apiGroups: [""] # "" indicates the core API group
+  resources: ["pods", "deployments", "jobs"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+#ClusterRole can have same permissions as Role, but also
+#can grant access to nodes, endpoints (/healthz), namespaced resources
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  # "namespace" omitted since ClusterRoles are not namespaced
+  name: secret-reader
+rules:
+- apiGroups: [""]
+  resources: ["secrets"] #["deployments"] ["jobs"]
+  verbs: ["get", "watch", "list"]
+
+#A role binding grants the permissions defined in a role to a user or set of users.
 # This role binding allows "jane" to read pods in the "default" namespace.
+# or allows "dave" to read secrets in the "development" namespace.
 kind: RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
@@ -415,11 +463,11 @@ metadata:
   namespace: default
 subjects:
 - kind: User
-  name: jane # Name is case sensitive
+  name: jane # dave # Name is case sensitive
   apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: Role #this must be Role or ClusterRole
-  name: pod-reader # this must match the name of the Role or ClusterRole you wish to bind to
+  name: pod-reader # secret-reader # this must match the name of the Role or ClusterRole you wish to bind to
   apiGroup: rbac.authorization.k8s.io
 
 Aggregated ClusterRoles:
@@ -546,6 +594,7 @@ STORAGE:
 PersistentVolumes, Claims and configure apps with persistent storage:
 https://kubernetes.io/docs/tasks/configure-pod-container/configure-persistent-volume-storage/
 gcloud compute ssh <node name>
+
 mkdir /mnt/data && echo 'Hello from Kubernetes storage' > /mnt/data/index.html
 kind: PersistentVolume
 apiVersion: v1
@@ -558,12 +607,12 @@ spec:
   capacity:
     storage: 10Gi
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteOnce #ReadOnlyMany/ReadWriteMany
   hostPath:
     path: "/mnt/data"
-
 kubectl create -f https://k8s.io/examples/pods/storage/pv-volume.yaml
 kubectl get pv task-pv-volume
+
 kind: PersistentVolumeClaim
 apiVersion: v1
 metadata:
@@ -571,11 +620,13 @@ metadata:
 spec:
   storageClassName: manual
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteOnce #ReadOnlyMany/ReadWriteMany
   resources:
     requests:
       storage: 3Gi
+kubectl create -f https://k8s.io/examples/pods/storage/pv-claim.yaml
 kubectl get pvc task-pv-claim
+
 kind: Pod
 apiVersion: v1
 metadata:
@@ -596,11 +647,12 @@ spec:
           name: task-pv-storage
 kubectl create -f https://k8s.io/examples/pods/storage/pv-pod.yaml
 kubectl get pod task-pv-pod
+
 kubectl exec -it task-pv-pod -- /bin/bash
 in pod shell:
   curl localhost
 
-GID for PersistentVolume:
+Access control via GID for PersistentVolume:
 kind: PersistentVolume
 apiVersion: v1
 metadata:
@@ -608,19 +660,17 @@ metadata:
   annotations:
     pv.beta.kubernetes.io/gid: "1234
 
-Volume Access modes:
-  accessModes:
-- ReadWriteOnce/-ReadOnlyMany/-ReadWriteMany
-
 TROUBLESHOOTING:
   https://kubernetes.io/docs/tasks/debug-application-cluster/determine-reason-pod-failure/
   https://kubernetes.io/docs/tasks/debug-application-cluster/debug-cluster/
   kubectl version/cluster-info/cluster-info dump
-  kubectl get apiservices //check if metrics-server is running
+  kubectl get apiservices #check if metrics-server is running
   kubectl get pods -o wide --show-labels --all-namespaces
   kubectl get node <> -o yaml
   kubectl describe pods <>
   kubectl get events --namespace=<>
+  kubectl create -f test-application.deploy.yaml \
+  --dry-run --validate=true #validate conf before deploy
 
 End-to-end tests:
   kubectl cluster-info
@@ -684,6 +734,21 @@ spec:
   policyTypes:
   #-Ingress
   - Egress
+
+#allow access to nginx service only for pods with access: "true" label
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: access-nginx
+spec:
+  podSelector:
+    matchLabels:
+      run: nginx
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          access: "true"
 
 Configure Network Load balancer:
   kubectl expose rc example --port=8765 --target-port=9376 \ #--expose outputs Service
@@ -969,6 +1034,8 @@ kubectl get events --sort-by=.metadata.creationTimestamp
 Secrets/Secure key-value store:
 echo -n "admin" > ./username.txt
 kubectl create secret generic user --from-file=./username.txt
+kubectl create secret generic secret-name \
+--from-literal=pass=pass -o yaml --dry-run > secret-name.yaml
 https://kubernetes.io/docs/concepts/configuration/secret
 apiVersion: v1
 kind: Secret
@@ -1334,6 +1401,7 @@ systemctl
 systemctl daemon-reload
 systemctl enable <service>
 systemctl start <service>
+systemctl restart kubelet (on master, if api server invisible via docker ps)
 systemctl status <service>
 systemctl list-unit-files
 systemctl --failed
@@ -1352,6 +1420,36 @@ ExecReload=/bin/kill -HUP $MAINPID
 KillMode=process
 Restart=on-failure
 RestartSec=42s
+
+[Install]
+WantedBy=multi-user.target
+
+#ETCD unit file
+[Unit]
+Description=etcd
+Documentation=https://github.com/coreos
+
+[Service]
+ExecStart=/usr/local/bin/etcd \\
+  --name ${ETCD_NAME} \\
+  --cert-file=/etc/etcd/kubernetes.pem \\
+  --key-file=/etc/etcd/kubernetes-key.pem \\
+  --peer-cert-file=/etc/etcd/kubernetes.pem \\
+  --peer-key-file=/etc/etcd/kubernetes-key.pem \\
+  --trusted-ca-file=/etc/etcd/ca.pem \\
+  --peer-trusted-ca-file=/etc/etcd/ca.pem \\
+  --peer-client-cert-auth \\
+  --client-cert-auth \\
+  --initial-advertise-peer-urls https://${INTERNAL_IP}:2380 \\
+  --listen-peer-urls https://${INTERNAL_IP}:2380 \\
+  --listen-client-urls https://${INTERNAL_IP}:2379,https://127.0.0.1:2379 \\
+  --advertise-client-urls https://${INTERNAL_IP}:2379 \\
+  --initial-cluster-token etcd-cluster-0 \\
+  --initial-cluster controller-0=https://10.240.0.10:2380,controller-1=https://10.240.0.11:2380,controller-2=https://10.240.0.12:2380 \\
+  --initial-cluster-state new \\
+  --data-dir=/var/lib/etcd
+Restart=on-failure
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
